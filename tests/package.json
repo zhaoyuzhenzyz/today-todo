@@ -1,0 +1,17 @@
+{
+  "name": "today-todo-tests",
+  "version": "1.0.2",
+  "private": true,
+  "description": "今日待办的自动化测试（CDP 驱动真实 Electron / Edge 窗口）",
+  "scripts": {
+    "test": "node edit.test.js",
+    "test:edit": "node edit.test.js",
+    "test:web": "node web-edit.test.js",
+    "test:pkg": "node pkg-edit.test.js",
+    "test:install": "node install.test.js",
+    "icons": "python verify_pe.py"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;" />
+<title>今日待办</title>
+<style>
+  :root {
+    --bg: #0B0D11;
+    --surface: #111419;
+    --surface-2: #171B22;
+    --surface-3: #1E232C;
+    --border: rgba(255, 255, 255, 0.075);
+    --border-strong: rgba(255, 255, 255, 0.145);
+    --text: #EDEFF3;
+    --text-2: #9AA2AE;
+    --text-3: #626A76;
+    --accent: #4D8DFF;
+    --accent-2: #6FA5FF;
+    --accent-soft: rgba(77, 141, 255, 0.14);
+    --danger: #FF6B6B;
+    --danger-soft: rgba(255, 107, 107, 0.13);
+    --card-shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.72), 0 2px 10px rgba(0, 0, 0, 0.4);
+    --inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --r-card: 15px;
+    --r-md: 11px;
+    --r-sm: 8px;
+    --r-full: 999px;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+            "Microsoft YaHei", "Source Han Sans SC", Inter, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    --gutter: 13px;
+    --shell-pad: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  html { background: transparent; }
+  body {
+    font-family: var(--font);
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    background: transparent;
+    user-select: none;
+    display: flex;
+    padding: var(--shell-pad);
+  }
+
+  /* ============ 普通窗口模式：铺满、无圆角、无阴影 ============ */
+  html[data-mode="normal"] { background: var(--bg); }
+  html[data-mode="normal"] body { padding: 0; background: var(--bg); }
+  html[data-mode="normal"] .card {
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
+    background: var(--bg);
+    /* 普通窗口由系统标题栏负责拖动，内容区不再拦截拖动，
+       否则会破坏文本选中与列表滚动 */
+    -webkit-app-region: no-drag;
+  }
+  html[data-mode="normal"] { --gutter: 22px; }
+  html[data-mode="normal"] body { font-size: 14.5px; }
+  html[data-mode="normal"] .card-head { height: auto; padding: 16px var(--gutter) 12px; }
+  html[data-mode="normal"] .brand { font-size: 15px; }
+
+  /* ============ 卡片 ============ */
+  .card {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-card);
+    box-shadow: var(--card-shadow), var(--inset);
+    overflow: hidden;
+    position: relative;
+    /* 整张卡默认可拖动 */
+    -webkit-app-region: drag;
+  }
+
+  /* 交互元素一律排除拖拽 */
+  button, input, .no-drag, .list-scroll { -webkit-app-region: no-drag; }
+
+  /* ============ 头部 ============ */
+  .card-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px var(--gutter) 9px;
+    position: relative;
+  }
+  .card-head::after {
+    content: "";
+    position: absolute;
+    left: var(--gutter); right: var(--gutter); bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border) 18%, var(--border) 82%, transparent);
+  }
+
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    flex: none;
+  }
+  .brand {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    white-space: nowrap;
+  }
+  .date-chip {
+    font-size: 11px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .head-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    flex: none;
+    -webkit-app-region: no-drag;
+  }
+
+  .ico-btn {
+    width: 25px; height: 25px;
+    display: grid; place-items: center;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    transition: color .16s var(--ease), background-color .16s var(--ease), transform .14s var(--ease);
+  }
+  .ico-btn svg { width: 14px; height: 14px; display: block; }
+  .ico-btn:hover { color: var(--text); background: var(--surface-3); }
+  .ico-btn:active { transform: scale(0.9); }
+  .ico-btn.active { color: var(--accent); background: var(--accent-soft); }
+  .ico-btn.danger:hover { color: var(--danger); background: var(--danger-soft); }
+
+  /* ============ 主体 ============ */
+  .card-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 12px var(--gutter) 0;
+    gap: 10px;
+  }
+
+  /* ============ 输入框 ============ */
+  .composer {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 0 5px 0 10px;
+    height: 38px;
+    transition: border-color .18s var(--ease), background-color .18s var(--ease), box-shadow .18s var(--ease);
+  }
+  .composer:focus-within {
+    border-color: color-mix(in srgb, var(--accent) 52%, transparent);
+    background: var(--surface-3);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .composer.invalid { animation: nudge .32s var(--ease); border-color: var(--danger); }
+  @keyframes nudge {
+    0%, 100% { transform: translateX(0); }
+    28% { transform: translateX(-4px); }
+    62% { transform: translateX(3px); }
+  }
+  .composer .plus { flex: none; color: var(--text-3); display: grid; place-items: center; }
+  .composer .plus svg { width: 15px; height: 15px; }
+
+  #input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13.5px;
+    height: 100%;
+    user-select: text;
+  }
+  #input::placeholder { color: var(--text-3); }
+
+  .add-btn {
+    flex: none;
+    height: 28px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 550;
+    color: #fff;
+    background: linear-gradient(180deg, var(--accent-2), var(--accent));
+    box-shadow: 0 4px 12px -6px var(--accent), inset 0 1px 0 rgba(255,255,255,.24);
+    transition: filter .16s var(--ease), transform .14s var(--ease);
+  }
+  .add-btn:hover { filter: brightness(1.1); }
+  .add-btn:active { transform: scale(0.95); }
+
+  /* ============ 进度条 ============ */
+  .progress {
+    flex: none;
+    height: 2px;
+    border-radius: var(--r-full);
+    background: var(--border);
+    overflow: hidden;
+  }
+  .progress > i {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width .45s var(--ease);
+  }
+
+  /* ============ 筛选 + 计数 ============ */
+  .bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .filters {
+    display: inline-flex;
+    gap: 1px;
+    padding: 2px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-full);
+  }
+  .filters button {
+    border: 0;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-3);
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 3px 9px;
+    border-radius: var(--r-full);
+    white-space: nowrap;
+    transition: color .16s var(--ease), background-color .16s var(--ease);
+  }
+  .filters button:hover { color: var(--text); }
+  .filters button[aria-selected="true"] {
+    color: var(--text);
+    background: var(--surface-3);
+    box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+
+  .counter {
+    font-size: 11.5px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+  }
+  .counter b { color: var(--accent); font-weight: 620; font-size: 13px; }
+  .counter .sep {
+    width: 1px; height: 8px;
+    background: var(--border-strong);
+    display: inline-block;
+    margin: 0 5px;
+    transform: translateY(1px);
+  }
+
+  /* ============ 列表 ============ */
+  .list-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    margin: 0 calc(-1 * var(--gutter));
+    padding: 0 var(--gutter);
+    overscroll-behavior: contain;
+  }
+  .list-scroll::-webkit-scrollbar { width: 7px; }
+  .list-scroll::-webkit-scrollbar-track { background: transparent; }
+  .list-scroll::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: var(--r-full);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .list-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; }
+
+  ul.list { list-style: none; display: flex; flex-direction: column; gap: 1px; padding-bottom: 4px; }
+
+  li.item {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 8px 8px 8px 7px;
+    border-radius: var(--r-sm);
+    position: relative;
+    transition: background-color .15s var(--ease);
+  }
+  li.item:hover { background: var(--surface-2); }
+
+  .check {
+    flex: none;
+    width: 17px; height: 17px;
+    margin-top: 1px;
+    border-radius: 5px;
+    border: 1.5px solid var(--border-strong);
+    background: transparent;
+    cursor: pointer;
+    display: grid; place-items: center;
+    transition: border-color .18s var(--ease), background-color .18s var(--ease), transform .14s var(--ease);
+  }
+  .check:hover { border-color: var(--accent); }
+  .check:active { transform: scale(0.88); }
+  .check svg {
+    width: 11px; height: 11px;
+    stroke: #fff;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+    stroke-dasharray: 20;
+    stroke-dashoffset: 20;
+    transition: stroke-dashoffset .28s var(--ease) .03s;
+  }
+  li.item.done .check { background: var(--accent); border-color: var(--accent); }
+  li.item.done .check svg { stroke-dashoffset: 0; }
+
+  .task {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    overflow-wrap: anywhere;
+    padding-top: 0.5px;
+    transition: color .2s var(--ease);
+    cursor: text;
+    border-radius: 4px;
+  }
+  li.item.done .task {
+    color: var(--text-3);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+  /* 编辑态：标题被替换为输入框 */
+  li.item.editing { background: var(--surface-2); }
+  li.item.editing .task,
+  li.item.editing .edit-btn,
+  li.item.editing .del { display: none; }
+
+  .edit-input {
+    flex: 1;
+    min-width: 0;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: 6px;
+    padding: 3px 7px;
+    margin: -1px 0;
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    user-select: text;
+    -webkit-app-region: no-drag;
+  }
+
+  .row-actions {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    flex: none;
+    margin-top: -1px;
+  }
+
+  .edit-btn, .del {
+    flex: none;
+    width: 22px; height: 22px;
+    display: grid; place-items: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s var(--ease), color .15s var(--ease), background-color .15s var(--ease);
+  }
+  .edit-btn svg { width: 12.5px; height: 12.5px; }
+  .del svg { width: 12.5px; height: 12.5px; }
+  li.item:hover .edit-btn, .edit-btn:focus-visible,
+  li.item:hover .del, .del:focus-visible { opacity: 1; }
+  .edit-btn:hover { color: var(--accent); background: var(--accent-soft); }
+  .del:hover { color: var(--danger); background: var(--danger-soft); }
+
+  /* ============ 空态 ============ */
+  .empty {
+    padding: 30px 12px;
+    text-align: center;
+  }
+  .empty .glyph {
+    width: 36px; height: 36px;
+    margin: 0 auto 10px;
+    display: grid; place-items: center;
+    border-radius: 11px;
+    border: 1px dashed var(--border-strong);
+    color: var(--text-3);
+  }
+  .empty .glyph svg { width: 16px; height: 16px; }
+  .empty p { font-size: 12.5px; color: var(--text-2); }
+  .empty span { display: block; margin-top: 3px; font-size: 11px; color: var(--text-3); }
+
+  /* ============ 底部 ============ */
+  .card-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px var(--gutter) 9px;
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+    min-height: 32px;
+  }
+  .foot-btn {
+    border: 0;
+    background: transparent;
+    color: var(--text-3);
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 3px 6px;
+    margin: -3px -6px;
+    border-radius: 5px;
+    transition: color .15s var(--ease), background-color .15s var(--ease), opacity .15s var(--ease);
+    opacity: 0;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .foot-btn.show { opacity: 1; pointer-events: auto; }
+  .foot-btn:hover { color: var(--danger); background: var(--danger-soft); }
+
+  .hint {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--text-3);
+    opacity: 0.75;
+    white-space: nowrap;
+  }
+  .hint kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+
+  /* ============ 设置浮层 ============ */
+  .settings {
+    position: absolute;
+    top: 38px;
+    right: 8px;
+    width: 208px;
+    padding: 4px 10px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    box-shadow: 0 16px 36px -8px rgba(0,0,0,.8), var(--inset);
+    z-index: 40;
+    -webkit-app-region: no-drag;
+    animation: pop .16s var(--ease);
+  }
+  .settings[hidden] { display: none; }
+  @keyframes pop {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  .set-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .set-row:last-child { border-bottom: 0; }
+  .set-label { font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+  .set-control { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: flex-end; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 84px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border-strong);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px rgba(77,141,255,.22);
+    cursor: grab;
+  }
+  input[type="range"]::-webkit-slider-thumb:active { cursor: grabbing; }
+  .set-val {
+    font-size: 10.5px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    width: 30px;
+    text-align: right;
+  }
+
+  .switch {
+    width: 30px; height: 17px;
+    border-radius: var(--r-full);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    cursor: pointer;
+    position: relative;
+    padding: 0;
+    flex: none;
+    transition: background-color .2s var(--ease), border-color .2s var(--ease);
+  }
+  .switch i {
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    background: var(--text-3);
+    transition: transform .2s var(--ease), background-color .2s var(--ease);
+  }
+  .switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+  .switch[aria-checked="true"] i { transform: translateX(13px); background: #fff; }
+
+  .set-mode-btn, .set-quit {
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text-2);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color .15s var(--ease), border-color .15s var(--ease), background-color .15s var(--ease);
+  }
+  .set-mode-btn:hover { color: var(--text); border-color: var(--text-3); }
+  .set-quit:hover { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+
+  html[data-mode="normal"] .settings { top: 44px; right: 16px; width: 232px; }
+
+  /* ============ 自定义缩放手柄 ============ */
+  .grip {
+    position: absolute;
+    right: 0; bottom: 0;
+    width: 16px; height: 16px;
+    display: grid;
+    place-items: end;
+    padding: 0 2px 2px 0;
+    color: var(--text-3);
+    opacity: 0;
+    cursor: nwse-resize;
+    transition: opacity .18s var(--ease), color .18s var(--ease);
+    -webkit-app-region: no-drag;
+    z-index: 5;
+  }
+  .grip svg { width: 10px; height: 10px; }
+  .card:hover .grip { opacity: 0.55; }
+  .grip:hover { opacity: 1 !important; color: var(--text-2); }
+
+  html[data-mode="normal"] .grip { display: none; }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* 悬浮模式下窗口很窄，隐藏次要信息 */
+  @media (max-width: 360px) {
+    .hint { display: none; }
+    .date-chip { font-size: 10.5px; }
+  }
+  @media (max-height: 380px) {
+    .card-foot { display: none; }
+    .empty { padding: 16px 12px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      transition-duration: .001ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <!-- 设置浮层 -->
+    <div class="settings" id="settings" hidden>
+      <div class="set-row">
+        <label class="set-label" for="opacityRange">透明度</label>
+        <div class="set-control">
+          <input type="range" id="opacityRange" min="40" max="100" step="5" value="100" aria-label="窗口透明度" />
+          <span class="set-val" id="opacityVal">100%</span>
+        </div>
+      </div>
+      <div class="set-row">
+        <label class="set-label" for="autoStart">开机自启</label>
+        <button class="switch" id="autoStart" type="button" role="switch" aria-checked="false" aria-label="开机自启">
+          <i></i>
+        </button>
+      </div>
+      <div class="set-row">
+        <span class="set-label">窗口模式</span>
+        <button class="set-mode-btn" id="setModeBtn" type="button">退出悬浮</button>
+      </div>
+      <div class="set-row">
+        <span class="set-label">退出程序</span>
+        <button class="set-quit" id="quitBtn" type="button">退出</button>
+      </div>
+    </div>
+    <header class="card-head">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="brand">今日待办</span>
+      <span class="date-chip" id="dateChip">—</span>
+      <div class="head-actions">
+        <button class="ico-btn" id="pinBtn" type="button" title="始终置顶" aria-label="切换始终置顶">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 4h6M12 4v6M12 10l-3.2 4.2h6.4L12 10zM12 14.2V20"/>
+          </svg>
+        </button>
+        <button class="ico-btn" id="modeBtn" type="button" title="退出悬浮模式" aria-label="切换悬浮模式">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" id="modeIcon">
+            <path d="M8 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V16"/>
+            <path d="M14 4h6v6M20 4l-7.5 7.5"/>
+          </svg>
+        </button>
+        <button class="ico-btn" id="minBtn" type="button" title="最小化" aria-label="最小化">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+            <path d="M6 12h12"/>
+          </svg>
+        </button>
+        <button class="ico-btn" id="setBtn" type="button" title="设置" aria-label="设置" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.46V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1.05-1.46 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.6 1.6 0 0 0 4.6 15a1.6 1.6 0 0 0-1.46-.97H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.6 1.6 0 0 0 9 4.6 1.6 1.6 0 0 0 10 3.14V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 .97 1.46 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.6 1.6 0 0 0 19.4 9v.1a1.6 1.6 0 0 0 1.46.97H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5.93z"/>
+          </svg>
+        </button>
+        <button class="ico-btn danger" id="hideBtn" type="button" title="隐藏到托盘" aria-label="隐藏窗口">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+            <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="card-body">
+      <form class="composer" id="composer" autocomplete="off">
+        <span class="plus" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </span>
+        <label class="sr-only" for="input">新增任务</label>
+        <input id="input" type="text" placeholder="今天要做什么？" maxlength="200" />
+        <button class="add-btn" id="addBtn" type="submit">添加</button>
+      </form>
+
+      <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
+
+      <div class="bar">
+        <div class="filters" role="tablist" aria-label="筛选任务">
+          <button type="button" role="tab" data-filter="all" aria-selected="true">全部</button>
+          <button type="button" role="tab" data-filter="active" aria-selected="false">未完成</button>
+          <button type="button" role="tab" data-filter="done" aria-selected="false">已完成</button>
+        </div>
+        <div class="counter" id="counter" aria-live="polite"></div>
+      </div>
+
+      <div class="list-scroll" id="scroll">
+        <ul class="list" id="list"></ul>
+        <div class="empty" id="empty" hidden>
+          <div class="glyph">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7.5h16M4 12h10M4 16.5h7"/>
+            </svg>
+          </div>
+          <p id="emptyTitle">今天还很干净</p>
+          <span id="emptyDesc">写下一件小事，回车即可</span>
+        </div>
+      </div>
+    </div>
+
+    <footer class="card-foot">
+      <button class="foot-btn" id="clearDone" type="button">清除已完成</button>
+      <span class="hint">双击标题可编辑 <kbd>Esc</kbd> 隐藏</span>
+    </footer>
+
+    <!-- 悬浮模式下的自定义缩放手柄 -->
+    <div class="grip" id="grip" title="拖动调整大小" aria-hidden="true">
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+        <path d="M11 5.2 5.2 11M11 9.2 9.2 11"/>
+      </svg>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORE_KEY = "today-todo.items.v1";
+
+  /* ---------- 桌面桥接（浏览器中打开时降级为模拟） ---------- */
+  var bridge = window.desktop;
+  var mockState = { mode: "floating", alwaysOnTop: true, opacity: 1, visible: true };
+  if (!bridge) {
+    bridge = {
+      isDesktop: false,
+      getState: function () { return Promise.resolve(Object.assign({}, mockState)); },
+      setMode: function (m) { mockState.mode = m; syncMode(m); return Promise.resolve(true); },
+      setAlwaysOnTop: function (v) { mockState.alwaysOnTop = v; return Promise.resolve(v); },
+      setOpacity: function (v) { return Promise.resolve(v); },
+      hide: function () { return Promise.resolve(true); },
+      minimize: function () { return Promise.resolve(true); },
+      quit: function () { return Promise.resolve(true); },
+      getBounds: function () { return Promise.resolve(null); },
+      moveBy: function () {},
+      resizeBy: function () {},
+      snap: function () {},
+      onState: function () { return function () {}; }
+    };
+  }
+
+  var els = {
+    html: document.documentElement,
+    form: document.getElementById("composer"),
+    input: document.getElementById("input"),
+    list: document.getElementById("list"),
+    scroll: document.getElementById("scroll"),
+    empty: document.getElementById("empty"),
+    emptyTitle: document.getElementById("emptyTitle"),
+    emptyDesc: document.getElementById("emptyDesc"),
+    counter: document.getElementById("counter"),
+    progressBar: document.getElementById("progressBar"),
+    dateChip: document.getElementById("dateChip"),
+    clearDone: document.getElementById("clearDone"),
+    pinBtn: document.getElementById("pinBtn"),
+    modeBtn: document.getElementById("modeBtn"),
+    modeIcon: document.getElementById("modeIcon"),
+    minBtn: document.getElementById("minBtn"),
+    hideBtn: document.getElementById("hideBtn"),
+    setBtn: document.getElementById("setBtn"),
+    settings: document.getElementById("settings"),
+    opacityRange: document.getElementById("opacityRange"),
+    opacityVal: document.getElementById("opacityVal"),
+    autoStart: document.getElementById("autoStart"),
+    setModeBtn: document.getElementById("setModeBtn"),
+    quitBtn: document.getElementById("quitBtn")
+  };
+
+  var state = { items: [], filter: "all", mode: "floating", alwaysOnTop: true };
+  var nodes = new Map();
+  // 记录当前正在编辑的行，保证同时只有一处处于编辑态
+  var editingId = null;
+
+  /* ---------- 存储 ---------- */
+
+  function loadItems() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return [];
+      var arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .filter(function (it) { return it && typeof it.text === "string" && it.text.trim(); })
+        .map(function (it) {
+          return {
+            id: String(it.id || uid()),
+            text: String(it.text).slice(0, 200),
+            done: !!it.done,
+            createdAt: Number(it.createdAt) || Date.now()
+          };
+        });
+    } catch (e) { return []; }
+  }
+
+  function saveItems() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state.items)); } catch (e) {}
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  /* ---------- 工具 ---------- */
+
+  function dateLabel() {
+    var d = new Date();
+    var w = ["日", "一", "二", "三", "四", "五", "六"][d.getDay()];
+    return (d.getMonth() + 1) + "月" + d.getDate() + "日 周" + w;
+  }
+
+  function visible() {
+    if (state.filter === "active") return state.items.filter(function (i) { return !i.done; });
+    if (state.filter === "done") return state.items.filter(function (i) { return i.done; });
+    return state.items;
+  }
+
+  /* ---------- 渲染 ---------- */
+
+  var CHECK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 8.5 6.3 11.6 12.9 4.7"/></svg>';
+  var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M4.5 7h15M9.8 7V5.3A1.3 1.3 0 0 1 11.1 4h1.8a1.3 1.3 0 0 1 1.3 1.3V7"/>' +
+    '<path d="M6.8 7l.7 10.9A1.9 1.9 0 0 0 9.4 19.8h5.2a1.9 1.9 0 0 0 1.9-1.9L17.2 7"/></svg>';
+  var PENCIL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0 0-3L17 5a2.1 2.1 0 0 0-3 0L3.5 15.5V20z"/>' +
+    '<path d="M13.5 6.5l4 4"/></svg>';
+
+  function makeRow(item) {
+    var li = document.createElement("li");
+    li.className = "item" + (item.done ? " done" : "");
+    li.dataset.id = item.id;
+
+    var check = document.createElement("button");
+    check.type = "button";
+    check.className = "check";
+    check.setAttribute("role", "checkbox");
+    check.setAttribute("aria-checked", item.done ? "true" : "false");
+    check.setAttribute("aria-label", (item.done ? "取消完成：" : "标记完成：") + item.text);
+    check.innerHTML = CHECK_SVG;
+
+    var span = document.createElement("span");
+    span.className = "task";
+    span.textContent = item.text;
+    span.title = "双击编辑";
+    span.setAttribute("role", "button");
+    span.setAttribute("tabindex", "0");
+    span.setAttribute("aria-label", "编辑：" + item.text);
+
+    var actions = document.createElement("div");
+    actions.className = "row-actions";
+
+    var edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "edit-btn";
+    edit.setAttribute("aria-label", "编辑：" + item.text);
+    edit.title = "编辑";
+    edit.innerHTML = PENCIL_SVG;
+
+    var del = document.createElement("button");
+    del.type = "button";
+    del.className = "del";
+    del.setAttribute("aria-label", "删除：" + item.text);
+    del.title = "删除";
+    del.innerHTML = TRASH_SVG;
+
+    actions.appendChild(edit);
+    actions.appendChild(del);
+
+    li.appendChild(check);
+    li.appendChild(span);
+    li.appendChild(actions);
+    return li;
+  }
+
+  function enterAnim(li) {
+    if (!li.animate) return;
+    li.animate(
+      [{ opacity: 0, transform: "translateY(-6px)" }, { opacity: 1, transform: "translateY(0)" }],
+      { duration: 220, easing: "cubic-bezier(0.22,1,0.36,1)" }
+    );
+  }
+
+  function render() {
+    var items = visible();
+    els.list.textContent = "";
+    nodes.clear();
+    // 全量重建后旧的编辑态已不存在
+    editingId = null;
+    items.forEach(function (it) {
+      var li = makeRow(it);
+      nodes.set(it.id, li);
+      els.list.appendChild(li);
+    });
+    updateEmpty();
+    updateMeta();
+  }
+
+  function updateEmpty() {
+    var items = visible();
+    var has = state.items.length > 0;
+    els.empty.hidden = items.length > 0;
+    if (items.length > 0) return;
+    if (!has) {
+      els.emptyTitle.textContent = "今天还很干净";
+      els.emptyDesc.textContent = "写下一件小事，回车即可";
+    } else if (state.filter === "active") {
+      els.emptyTitle.textContent = "全部完成了";
+      els.emptyDesc.textContent = "可以安心收工";
+    } else {
+      els.emptyTitle.textContent = "还没有完成的事项";
+      els.emptyDesc.textContent = "勾选任务后会出现在这里";
+    }
+  }
+
+  function updateMeta() {
+    var total = state.items.length;
+    var done = state.items.filter(function (i) { return i.done; }).length;
+    var remain = total - done;
+
+    els.counter.textContent = "";
+    var b = document.createElement("b");
+    b.textContent = String(remain);
+    var lab = document.createElement("span");
+    lab.textContent = "项剩余";
+    els.counter.appendChild(b);
+    els.counter.appendChild(lab);
+    if (total > 0) {
+      var sep = document.createElement("span");
+      sep.className = "sep";
+      sep.setAttribute("aria-hidden", "true");
+      var all = document.createElement("span");
+      all.textContent = "共 " + total + " 项";
+      els.counter.appendChild(sep);
+      els.counter.appendChild(all);
+    }
+
+    els.progressBar.style.width = (total ? Math.round((done / total) * 100) : 0) + "%";
+    els.clearDone.classList.toggle("show", done > 0);
+    els.clearDone.disabled = done === 0;
+  }
+
+  /* ---------- 操作 ---------- */
+
+  function addTask(raw) {
+    var text = (raw || "").trim();
+    if (!text) {
+      els.form.classList.remove("invalid");
+      void els.form.offsetWidth;
+      els.form.classList.add("invalid");
+      els.input.focus();
+      return;
+    }
+
+    // 新增前提交未完成的编辑，保证顺序与内容一致
+    if (editingId) endEditing(true);
+
+    var item = { id: uid(), text: text.slice(0, 200), done: false, createdAt: Date.now() };
+    state.items.unshift(item);
+    saveItems();
+
+    if (state.filter === "done") {
+      setFilter("all");
+    } else {
+      var li = makeRow(item);
+      nodes.set(item.id, li);
+      els.list.insertBefore(li, els.list.firstChild);
+      enterAnim(li);
+      updateEmpty();
+      updateMeta();
+    }
+    els.scroll.scrollTop = 0;
+    els.input.value = "";
+    els.input.focus();
+  }
+
+  function toggleTask(id) {
+    var item = state.items.find(function (i) { return i.id === id; });
+    if (!item) return;
+    item.done = !item.done;
+    saveItems();
+
+    var li = nodes.get(id);
+    if (li) {
+      li.classList.toggle("done", item.done);
+      var c = li.querySelector(".check");
+      if (c) c.setAttribute("aria-checked", item.done ? "true" : "false");
+    }
+    updateMeta();
+
+    var stillHere = visible().some(function (i) { return i.id === id; });
+    if (!stillHere && li) {
+      if (li.animate) {
+        li.animate(
+          [{ opacity: 1, transform: "translateX(0)" }, { opacity: 0, transform: "translateX(12px)" }],
+          { duration: 180, easing: "ease-out", fill: "forwards" }
+        ).onfinish = render;
+        setTimeout(function () { if (nodes.get(id) === li) render(); }, 220);
+      } else {
+        render();
+      }
+    }
+  }
+
+  function endEditing(commit) {
+    if (!editingId) return;
+    var id = editingId;
+    editingId = null;
+
+    var li = nodes.get(id);
+    var item = state.items.find(function (i) { return i.id === id; });
+    if (!li || !item) { render(); return; }
+
+    var input = li.querySelector(".edit-input");
+    var raw = input ? input.value : "";
+    var text = raw.trim();
+
+    if (commit && text && text !== item.text) {
+      // 保存修改
+      item.text = text.slice(0, 200);
+      saveItems();
+
+      var span = li.querySelector(".task");
+      if (span) {
+        span.textContent = item.text;
+        span.title = "双击编辑";
+        span.setAttribute("aria-label", "编辑：" + item.text);
+      }
+      var check = li.querySelector(".check");
+      if (check) {
+        check.setAttribute("aria-label", (item.done ? "取消完成：" : "标记完成：") + item.text);
+      }
+      var editBtn = li.querySelector(".edit-btn");
+      if (editBtn) editBtn.setAttribute("aria-label", "编辑：" + item.text);
+      var delBtn = li.querySelector(".del");
+      if (delBtn) delBtn.setAttribute("aria-label", "删除：" + item.text);
+
+      li.classList.remove("editing");
+      if (input) input.remove();
+    } else if (commit && !text) {
+      // 清空内容视为删除该条；若原本就是空则仅退出编辑
+      li.classList.remove("editing");
+      if (input) input.remove();
+      removeTask(id);
+      return;
+    } else {
+      // 取消编辑，恢复原文
+      li.classList.remove("editing");
+      if (input) input.remove();
+    }
+
+    els.input.focus();
+  }
+
+  function startEditing(id) {
+    if (editingId === id) return;
+    // 有其它行在编辑时，先提交那一行
+    if (editingId) endEditing(true);
+
+    var li = nodes.get(id);
+    var item = state.items.find(function (i) { return i.id === id; });
+    if (!li || !item) return;
+
+    editingId = id;
+    li.classList.add("editing");
+
+    var input = document.createElement("input");
+    input.type = "text";
+    input.className = "edit-input";
+    input.value = item.text;
+    input.maxLength = 200;
+    input.setAttribute("aria-label", "编辑任务内容");
+
+    // 插到标题位置
+    var span = li.querySelector(".task");
+    li.insertBefore(input, span);
+
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+
+    var settled = false;
+
+    function commitOnce(commit) {
+      if (settled) return;
+      settled = true;
+      endEditing(commit);
+    }
+
+    input.addEventListener("keydown", function (e) {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitOnce(true);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        commitOnce(false);
+      }
+    });
+
+    input.addEventListener("blur", function () {
+      // 失焦即保存，符合就地编辑的直觉
+      commitOnce(true);
+    });
+
+    // 阻止拖动区域干扰输入框内文本选择
+    input.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+  }
+
+  function removeTask(id) {
+    var idx = state.items.findIndex(function (i) { return i.id === id; });
+    if (idx === -1) return;
+    // 删除正在编辑的行时先退出编辑态，避免悬空输入框
+    if (editingId === id) editingId = null;
+    state.items.splice(idx, 1);
+    saveItems();
+
+    var li = nodes.get(id);
+    nodes.delete(id);
+
+    if (li && li.animate) {
+      var h = li.getBoundingClientRect().height;
+      li.style.overflow = "hidden";
+      li.animate(
+        [
+          { opacity: 1, height: h + "px", marginBottom: "0px" },
+          { opacity: 0, height: "0px", marginBottom: "-1px" }
+        ],
+        { duration: 190, easing: "cubic-bezier(0.4,0,1,1)", fill: "forwards" }
+      ).onfinish = render;
+      setTimeout(function () { if (nodes.get(id) !== li) return; render(); }, 230);
+    } else {
+      render();
+    }
+    updateMeta();
+  }
+
+  function clearCompleted() {
+    state.items
+      .filter(function (i) { return i.done; })
+      .map(function (i) { return i.id; })
+      .forEach(removeTask);
+  }
+
+  function setFilter(f) {
+    // 切换视图前先提交正在编辑的内容，避免修改丢失
+    if (editingId) endEditing(true);
+    state.filter = f;
+    Array.prototype.forEach.call(document.querySelectorAll(".filters button"), function (btn) {
+      btn.setAttribute("aria-selected", btn.dataset.filter === f ? "true" : "false");
+    });
+    els.scroll.scrollTop = 0;
+    render();
+  }
+
+  /* ---------- 模式 ---------- */
+
+  function syncMode(mode) {
+    state.mode = mode;
+    els.html.setAttribute("data-mode", mode);
+    var floating = mode === "floating";
+
+    els.modeBtn.title = floating ? "退出悬浮，转为普通窗口" : "进入悬浮模式";
+    els.modeBtn.setAttribute("aria-label", els.modeBtn.title);
+    els.modeIcon.innerHTML = floating
+      ? '<path d="M8 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V16"/><path d="M14 4h6v6M20 4l-7.5 7.5"/>'
+      : '<path d="M4 9V6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5H15"/><path d="M4 4l7.5 7.5M11.5 4H4v7.5"/>';
+
+    // 置顶按钮仅悬浮模式有意义；普通窗口隐藏
+    els.pinBtn.style.display = floating ? "" : "none";
+    // 最小化按钮仅普通窗口有意义
+    els.minBtn.style.display = floating ? "none" : "";
+    if (els.setModeBtn) els.setModeBtn.textContent = floating ? "退出悬浮" : "进入悬浮";
+  }
+
+  function syncPin(on) {
+    state.alwaysOnTop = on;
+    els.pinBtn.classList.toggle("active", !!on);
+    els.pinBtn.title = on ? "已置顶（点击取消）" : "始终置顶";
+    els.pinBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  function applyState(payload) {
+    if (!payload) return;
+    if (payload.mode) syncMode(payload.mode);
+    if (typeof payload.alwaysOnTop === "boolean") syncPin(payload.alwaysOnTop);
+  }
+
+  /* ---------- 事件 ---------- */
+
+  els.form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    addTask(els.input.value);
+  });
+
+  els.input.addEventListener("input", function () {
+    els.form.classList.remove("invalid");
+  });
+
+  els.list.addEventListener("click", function (e) {
+    var check = e.target.closest(".check");
+    if (check) {
+      var li = check.closest("li.item");
+      if (li) toggleTask(li.dataset.id);
+      return;
+    }
+    var editBtn = e.target.closest(".edit-btn");
+    if (editBtn) {
+      var erow = editBtn.closest("li.item");
+      if (erow) startEditing(erow.dataset.id);
+      return;
+    }
+    var del = e.target.closest(".del");
+    if (del) {
+      var row = del.closest("li.item");
+      if (row) removeTask(row.dataset.id);
+    }
+  });
+
+  // 双击标题进入编辑
+  els.list.addEventListener("dblclick", function (e) {
+    var task = e.target.closest(".task");
+    if (!task) return;
+    var li = task.closest("li.item");
+    if (li) startEditing(li.dataset.id);
+  });
+
+  // 键盘可达：标题聚焦后按 Enter / F2 进入编辑
+  els.list.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== "F2") return;
+    var task = e.target.closest && e.target.closest(".task");
+    if (!task) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var li = task.closest("li.item");
+    if (li) startEditing(li.dataset.id);
+  });
+
+  document.querySelector(".filters").addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-filter]");
+    if (btn) setFilter(btn.dataset.filter);
+  });
+
+  els.clearDone.addEventListener("click", clearCompleted);
+
+  els.pinBtn.addEventListener("click", function () {
+    var next = !state.alwaysOnTop;
+    bridge.setAlwaysOnTop(next).then(function (v) {
+      syncPin(typeof v === "boolean" ? v : next);
+    });
+  });
+
+  els.modeBtn.addEventListener("click", function () {
+    var next = state.mode === "floating" ? "normal" : "floating";
+    bridge.setMode(next).then(function () {
+      syncMode(next);
+      setTimeout(function () { els.input.focus(); }, 60);
+    });
+  });
+
+  els.minBtn.addEventListener("click", function () { bridge.minimize(); });
+  els.hideBtn.addEventListener("click", function () { bridge.hide(); });
+
+  /* ---------- 设置面板 ---------- */
+
+  function closeSettings() {
+    els.settings.hidden = true;
+    els.setBtn.classList.remove("active");
+    els.setBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function openSettings() {
+    els.settings.hidden = false;
+    els.setBtn.classList.add("active");
+    els.setBtn.setAttribute("aria-expanded", "true");
+  }
+
+  els.setBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    if (els.settings.hidden) {
+      openSettings();
+      bridge.getAutoLaunch().then(function (on) {
+        els.autoStart.setAttribute("aria-checked", on ? "true" : "false");
+      }).catch(function () {});
+    } else {
+      closeSettings();
+    }
+  });
+
+  // 点击面板外部收起
+  document.addEventListener("click", function (e) {
+    if (els.settings.hidden) return;
+    if (els.settings.contains(e.target) || els.setBtn.contains(e.target)) return;
+    closeSettings();
+  });
+
+  // 透明度：滑动即时生效，节流落盘
+  var opacityTimer = 0;
+  els.opacityRange.addEventListener("input", function () {
+    var v = Number(els.opacityRange.value);
+    els.opacityVal.textContent = v + "%";
+    if (opacityTimer) return;
+    opacityTimer = setTimeout(function () {
+      opacityTimer = 0;
+      bridge.setOpacity(Number(els.opacityRange.value) / 100);
+    }, 60);
+  });
+  els.opacityRange.addEventListener("change", function () {
+    bridge.setOpacity(Number(els.opacityRange.value) / 100);
+  });
+
+  els.autoStart.addEventListener("click", function () {
+    var next = els.autoStart.getAttribute("aria-checked") !== "true";
+    els.autoStart.setAttribute("aria-checked", next ? "true" : "false");
+    bridge.setAutoLaunch(next).then(function (actual) {
+      els.autoStart.setAttribute("aria-checked", actual ? "true" : "false");
+    }).catch(function () {
+      els.autoStart.setAttribute("aria-checked", next ? "false" : "true");
+    });
+  });
+
+  els.setModeBtn.addEventListener("click", function () {
+    closeSettings();
+    var next = state.mode === "floating" ? "normal" : "floating";
+    bridge.setMode(next).then(function () { syncMode(next); });
+  });
+
+  els.quitBtn.addEventListener("click", function () {
+    bridge.quit();
+  });
+
+  /* ---------- 缩放拖拽 ---------- */
+  (function initGrip() {
+    var grip = document.getElementById("grip");
+    if (!grip) return;
+
+    var dragging = false;
+    var lastX = 0;
+    var lastY = 0;
+    var pendingDx = 0;
+    var pendingDy = 0;
+    var rafId = 0;
+
+    function flush() {
+      rafId = 0;
+      if (!pendingDx && !pendingDy) return;
+      bridge.resizeBy(pendingDx, pendingDy);
+      pendingDx = 0;
+      pendingDy = 0;
+    }
+
+    grip.addEventListener("pointerdown", function (e) {
+      if (e.button !== 0) return;
+      dragging = true;
+      lastX = e.screenX;
+      lastY = e.screenY;
+      pendingDx = 0;
+      pendingDy = 0;
+      grip.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    grip.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      var dx = e.screenX - lastX;
+      var dy = e.screenY - lastY;
+      if (!dx && !dy) return;
+      lastX = e.screenX;
+      lastY = e.screenY;
+      pendingDx += dx;
+      pendingDy += dy;
+      if (!rafId) rafId = requestAnimationFrame(flush);
+    });
+
+    function stop(e) {
+      if (!dragging) return;
+      dragging = false;
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      flush();
+      try { grip.releasePointerCapture(e.pointerId); } catch (err) {}
+    }
+
+    grip.addEventListener("pointerup", stop);
+    grip.addEventListener("pointercancel", stop);
+    grip.addEventListener("lostpointercapture", stop);
+  })();
+
+  // 全局 Esc：唯一的隐藏入口，按优先级逐层处理
+  //   1) 正在编辑任务 → 取消编辑
+  //   2) 输入框有内容 → 清空
+  //   3) 设置面板展开 → 收起
+  //   4) 其余情况 → 隐藏窗口到托盘
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (e.defaultPrevented) return;
+
+    if (editingId) {
+      endEditing(false);
+      return;
+    }
+    if (document.activeElement === els.input && els.input.value) {
+      els.input.value = "";
+      els.form.classList.remove("invalid");
+      return;
+    }
+    if (!els.settings.hidden) {
+      closeSettings();
+      return;
+    }
+    bridge.hide();
+  });
+
+  window.addEventListener("storage", function (e) {
+    if (e.key === STORE_KEY) {
+      state.items = loadItems();
+      render();
+    }
+  });
+
+  bridge.onState(applyState);
+
+  /* ---------- 启动 ---------- */
+
+  function boot() {
+    els.dateChip.textContent = dateLabel();
+    state.items = loadItems();
+    render();
+    bridge.getState().then(function (s) {
+      applyState(s);
+      els.input.focus();
+    });
+  }
+
+  syncMode("floating");
+  boot();
+})();
+</script>
+</body>
+</html>
